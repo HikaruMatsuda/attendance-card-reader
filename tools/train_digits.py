@@ -58,6 +58,15 @@ def augment(x: torch.Tensor) -> torch.Tensor:
     thick = F.max_pool2d(x, 3, 1, 1)
     thin = torch.clamp((x - 0.35) / 0.65, 0, 1) ** 1.5
     x = torch.where(mode == 0, thick, torch.where(mode == 1, thin, x))
+    x = x.clamp(0, 1)
+    # 低解像度の写真を想定: 縮小→拡大でボケさせる（6 割に適用）
+    blur = torch.rand(b) < 0.6
+    if blur.any():
+        size = int(torch.randint(10, 24, (1,)))
+        low = F.interpolate(x[blur], size=(size, size), mode="bilinear", align_corners=False)
+        x[blur] = F.interpolate(low, size=(28, 28), mode="bilinear", align_corners=False)
+    x = x + torch.randn_like(x) * torch.rand(b, 1, 1, 1) * 0.12  # ノイズ
+    x = x * torch.empty(b, 1, 1, 1).uniform_(0.5, 1.0)  # 薄い筆跡
     return x.clamp(0, 1)
 
 
@@ -80,7 +89,7 @@ def main() -> None:
     xtr, ytr, xte, yte = load()
     xtr, xte = xtr.unsqueeze(1), xte.unsqueeze(1)
     net = Net()
-    epochs = 12
+    epochs = 16
     opt = torch.optim.AdamW(net.parameters(), 2e-3, weight_decay=1e-4)
     steps = epochs * (len(xtr) // 256)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 4e-3, total_steps=steps)

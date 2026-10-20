@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+import idrule
 import sorting
 
 st.set_page_config(page_title="CSV並べ替え", page_icon="🔢", layout="wide")
@@ -34,13 +35,13 @@ with st.expander("学籍番号の列（自動判定。違う場合は変更）",
                                      index=list(df.columns).index(guess), key=f"col_{name}")
 
 merged = sorting.merge_and_sort(frames, id_cols)
-valid = merged["学籍番号"].map(lambda s: bool(sorting.ID_RE.match(s)))
+valid = merged["学籍番号"].map(idrule.is_valid)
 dup = merged["学籍番号"].duplicated(keep=False) & valid
 
 drop_dup = st.toggle("重複した学籍番号を 1 件にまとめる（最初の行を残す）", False)
 if drop_dup:
     merged = merged[~(merged["学籍番号"].duplicated() & valid)].reset_index(drop=True)
-    valid = merged["学籍番号"].map(lambda s: bool(sorting.ID_RE.match(s)))
+    valid = merged["学籍番号"].map(idrule.is_valid)
     dup = pd.Series(False, index=merged.index)
 
 c1, c2, c3 = st.columns(3)
@@ -48,7 +49,7 @@ c1.metric("合計", len(merged))
 c2.metric("重複", int(dup.sum()))
 c3.metric("形式不正（末尾に配置）", int((~valid).sum()))
 if (~valid).any():
-    st.warning("「A/H＋数字7桁」の形式でない学籍番号があります（末尾にまとめています）: "
+    st.warning("学籍番号のルール（A/H＋入学年度20〜26＋5桁）に合わないものがあります（末尾にまとめています）: "
                + ", ".join(sorted(set(merged.loc[~valid, "学籍番号"].replace("", "（空）")))[:20]))
 
 group = st.radio("表示", ["すべて"] + sorted(set(merged.loc[valid, "区分"])), horizontal=True)

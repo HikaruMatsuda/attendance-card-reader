@@ -1,6 +1,7 @@
 """学籍番号の正規化と並べ替え。
 
-並び順: 先頭の英字（A, H, …）ごとにまとめる → 続く 2 桁（入学年: 25, 26 …）→ 残りの桁（昇順）。
+並び順: 先頭の英字（A → H）ごとにまとめる → 入学年度 2 桁（20〜26）→ 残りの桁（昇順）。
+ルールは idrule を参照。
 """
 
 from __future__ import annotations
@@ -11,7 +12,8 @@ import unicodedata
 
 import pandas as pd
 
-ID_RE = re.compile(r"^([A-Z])(\d{2})(\d{5})$")  # 例: A2500000
+import idrule
+
 RESERVED = ("学籍番号", "元ファイル", "区分", "入学年")
 ID_COLUMN_HINTS = ("学籍番号", "学生番号", "学籍", "id", "ID", "student")
 
@@ -25,11 +27,10 @@ def normalize_id(value: object) -> str:
 
 def sort_key(student_id: str) -> tuple:
     """(形式の正しさ, 英字, 年, 残り)。形式不正は末尾にまとめて文字列順。"""
-    m = ID_RE.match(student_id)
-    if not m:
+    parts = idrule.split(student_id)
+    if parts is None:
         return (1, "", "", student_id)
-    letter, year, rest = m.groups()
-    return (0, letter, year, rest)
+    return (0, *parts)
 
 
 def read_csv_bytes(data: bytes) -> pd.DataFrame:
@@ -48,7 +49,7 @@ def guess_id_column(df: pd.DataFrame) -> str:
         for col in df.columns:
             if hint.lower() in str(col).lower():
                 return col
-    scores = {c: df[c].map(lambda v: bool(ID_RE.match(normalize_id(v)))).sum() for c in df.columns}
+    scores = {c: df[c].map(lambda v: idrule.is_valid(normalize_id(v))).sum() for c in df.columns}
     return max(scores, key=scores.get)
 
 

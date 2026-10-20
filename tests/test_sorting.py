@@ -9,15 +9,16 @@ def test_normalize_id():
 
 
 def test_sort_groups_by_letter_then_year_then_rest():
-    ids = ["H2511111", "A2500000", "A2578000", "H2612345", "A2500000", "A2500000", "A2578001"]
+    ids = ["H2511111", "A2500000", "A2578000", "H2012345", "A2500000", "A2500000", "A2578001"]
     assert sorted(ids, key=sorting.sort_key) == [
-        "A2500000", "A2578000", "A2578001", "A2500000", "A2500000", "H2511111", "H2612345",
+        "A2500000", "A2578000", "A2578001", "A2500000", "A2500000", "H2012345", "H2511111",
     ]
 
 
 def test_invalid_ids_go_last():
-    ids = ["", "X1", "H2600000", "A2600000"]
-    assert sorted(ids, key=sorting.sort_key) == ["A2600000", "H2600000", "", "X1"]
+    # 英字が A/H 以外、入学年度が 20〜26 の範囲外のものもルール違反として末尾へ
+    ids = ["", "X1", "H2600000", "A1900000", "B2500000", "A2600000"]
+    assert sorted(ids, key=sorting.sort_key) == ["A2600000", "H2600000", "", "A1900000", "B2500000", "X1"]
 
 
 def test_merge_and_sort_multiple_csvs_with_different_columns():

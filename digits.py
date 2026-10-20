@@ -60,14 +60,62 @@ def to_mnist(cell_gray: np.ndarray) -> np.ndarray | None:
     return canvas
 
 
-def classify(cell_gray: np.ndarray) -> tuple[str, float]:
-    """(数字 or '?', 確信度 0-1)。"""
+def probs(cell_gray: np.ndarray) -> np.ndarray | None:
+    """0〜9 の確率（長さ 10）。文字が無ければ None。"""
     img = to_mnist(cell_gray)
     if img is None:
-        return "?", 0.0
+        return None
     x = (img.astype(np.float32) / 255.0).reshape(1, 1, 28, 28)
     logits = _get_session().run(None, {"input": x})[0][0]
     e = np.exp(logits - logits.max())
-    p = e / e.sum()
+    return e / e.sum()
+
+
+def classify(cell_gray: np.ndarray) -> tuple[str, float]:
+    """(数字 or '?', 確信度 0-1)。"""
+    p = probs(cell_gray)
+    if p is None:
+        return "?", 0.0
     k = int(p.argmax())
     return str(k), float(p[k])
+
+
+def classify_letter(cell_gray: np.ndarray) -> tuple[str, float]:
+    """先頭マスの英字が A か H かを形で判定する → (英字, 確信度)。
+
+    A は上部が頂点 1 か所にすぼまり、H は上部でも 2 本の縦棒が離れている。
+    手書きの A は頂点が開くこともあるので、3 つの特徴がすべてそろったときだけ H とし、
+    きわどいものは確信度を下げて人の確認に回す。
+    """
+    ink = (cell_gray < 128).astype(np.uint8)
+    ys, xs = np.where(ink)
+    if len(ys) < 25:
+        return "A", 0.0
+    g = ink[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+    h, w = g.shape
+    q = max(2, h // 4)
+    top = cv2.dilate(g[:q], np.ones((1, 3), np.uint8))  # 細かな途切れは無視
+    bottom = g[-q:]
+
+    runs, gaps = [], []
+    for r in top:
+        if not r.any():
+            continue
+        edges = np.diff(np.r_[0, r, 0].astype(np.int16))  # uint8 のままだと 0-1 が 255 に回り込む
+        starts, ends = np.where(edges == 1)[0], np.where(edges == -1)[0]
+        runs.append(len(starts))
+        if len(starts) >= 2:
+            gaps.append((starts[-1] - ends[0]) / w)
+
+    def span(rows: np.ndarray) -> float:
+        return float(np.median([np.ptp(np.where(r)[0]) if r.any() else 0 for r in rows]))
+
+    two_posts = bool(runs) and float(np.median(runs)) >= 2
+    wide_gap = bool(gaps) and float(np.median(gaps)) >= 0.35
+    parallel = span(top) / max(1.0, span(bottom)) >= 0.7
+    score = two_posts + wide_gap + parallel
+    if score == 3:
+        return "H", 0.9
+    if score == 2:
+        return "A", 0.5  # きわどい → 要確認
+    return "A", 0.95 if score == 0 else 0.8

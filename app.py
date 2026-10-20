@@ -13,6 +13,7 @@ import streamlit as st
 from PIL import Image, ImageOps
 
 import cards
+import idrule
 import ocr
 
 try:  # iPhone の HEIC 写真に対応
@@ -24,7 +25,7 @@ except ImportError:
 
 st.set_page_config(page_title="出席カード読み取り", page_icon="🗂️", layout="wide")
 
-LOW_CONF = 0.7  # これ未満の桁があるカードは「要確認」
+LOW_CONF = ocr.REVIEW_THRESHOLD
 
 
 @dataclass
@@ -38,7 +39,7 @@ class Record:
 
     @property
     def needs_check(self) -> bool:
-        return (not self.orientation_sure) or self.reading.min_conf < LOW_CONF or "?" in self.reading.text
+        return (not self.orientation_sure) or self.reading.min_conf < LOW_CONF or not idrule.is_valid(self.reading.text)
 
 
 def load_bgr(data: bytes) -> np.ndarray:
@@ -60,7 +61,7 @@ def draw_boxes(img: np.ndarray, boxes: list[np.ndarray]) -> np.ndarray:
     return out
 
 
-def process(files: list, params: cards.DetectParams, engine: str, prefix: str) -> tuple[list[Record], dict]:
+def process(files: list, params: cards.DetectParams, engine: str) -> tuple[list[Record], dict]:
     records: list[Record] = []
     overlays: dict[str, np.ndarray] = {}
     bar = st.progress(0.0, text="解析中…")
@@ -70,11 +71,10 @@ def process(files: list, params: cards.DetectParams, engine: str, prefix: str) -
         overlays[f.name] = draw_boxes(img, boxes)
         for ci, box in enumerate(boxes, 1):
             try:
-                card, flipped = cards.orient_card(cards.warp_card(img, box))
-                reading = ocr.recognize(card, engine, prefix)
+                card, flipped, reading = ocr.orient_and_read(cards.warp_card(img, box), engine)
             except Exception as e:  # noqa: BLE001 - 1 枚の失敗で全体を止めず、要確認として残す
                 card = cards.warp_card(img, box)
-                reading, flipped = ocr.Reading(prefix + "?" * 7, ()), None
+                reading, flipped = ocr.Reading("?" * (1 + idrule.N_DIGITS), ()), None
                 st.warning(f"{f.name}#{ci} を読み取れませんでした（{type(e).__name__}）。手入力してください。")
             records.append(Record(f"{fi}-{ci}", f"{f.name}#{ci}", card, reading,
                                   orientation_sure=flipped is not None))
@@ -83,11 +83,11 @@ def process(files: list, params: cards.DetectParams, engine: str, prefix: str) -
     return records, overlays
 
 
-def rotate_card(uid: str, engine: str, prefix: str) -> None:
+def rotate_card(uid: str, engine: str) -> None:
     """向きが逆だったカードを 180° 回して再認識する。"""
     rec = next(r for r in st.session_state.records if r.uid == uid)
     rec.card = cv2.rotate(rec.card, cv2.ROTATE_180)
-    rec.reading = ocr.recognize(rec.card, engine, prefix)
+    rec.reading = ocr.recognize(rec.card, engine)
     rec.orientation_sure = True
     st.session_state[f"id_{uid}"] = rec.reading.text
 
@@ -96,7 +96,8 @@ def rotate_card(uid: str, engine: str, prefix: str) -> None:
 with st.sidebar:
     st.header("設定")
     engine = st.selectbox("認識エンジン", ocr.ENGINES, help="Indra は文章向けで、手書きの1桁ずつは取りこぼしやすいです。")
-    prefix = st.text_input("学籍番号の先頭文字", "A", max_chars=2)
+    st.caption(f"学籍番号のルール: 先頭 {'/'.join(idrule.LETTERS)}、続く 2 桁は入学年度 "
+               f"{idrule.YEAR_MIN}〜{idrule.YEAR_MAX}、残り {idrule.N_DIGITS - 2} 桁は任意")
     with st.expander("カード検出の調整"):
         thresh = st.slider("色の感度（小さいほど拾いやすい）", 4, 30, int(cards.DetectParams.color_thresh))
         min_area = st.slider("最小サイズ（画像に対する%）", 0.2, 3.0, cards.DetectParams.min_area_ratio * 100, 0.1)
@@ -114,7 +115,7 @@ files = st.file_uploader("カードを撮影した写真（複数可）", type=[
 
 if files and st.button("解析する", type="primary"):
     with st.spinner("モデルを読み込み中…"):
-        recs, overlays = process(files, params, engine, prefix)
+        recs, overlays = process(files, params, engine)
     st.session_state.records, st.session_state.overlays = recs, overlays
     for r in recs:  # 前回の手修正を引き継がない
         st.session_state[f"id_{r.uid}"] = r.reading.text
@@ -147,13 +148,16 @@ for r in shown:
     left, right = st.columns([2, 5], vertical_alignment="center")
     with left:
         st.text_input(r.src, key=f"id_{r.uid}", help="読み取りが違う場合は直接書き換えてください。")
+        if not idrule.is_valid(ids[r.uid]):
+            st.caption("⚠️ 学籍番号のルール（A/H＋入学年度20〜26＋5桁）に合いません")
         if not r.orientation_sure:
             st.caption("⚠️ 向きを判定できませんでした")
         if r.reading.confs:
-            low = [i + 1 for i, p in enumerate(r.reading.confs) if p < LOW_CONF]
-            st.caption(("⚠️ 要確認: " + "・".join(f"{i}桁目" for i in low)) if low
+            low = (["先頭の英字"] if r.reading.letter_conf < LOW_CONF else []) + [
+                f"{i + 1}桁目" for i, p in enumerate(r.reading.confs) if p < LOW_CONF]
+            st.caption(("⚠️ 要確認: " + "・".join(low)) if low
                        else f"✅ 確信度 最低 {r.reading.min_conf:.0%}")
-        st.button("↻ 180°回転して再認識", key=f"rot_{r.uid}", on_click=rotate_card, args=(r.uid, engine, prefix))
+        st.button("↻ 180°回転して再認識", key=f"rot_{r.uid}", on_click=rotate_card, args=(r.uid, engine))
     with right:
         st.image(cv2.cvtColor(r.card, cv2.COLOR_BGR2RGB), width=520)
 
