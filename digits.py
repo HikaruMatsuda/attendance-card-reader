@@ -43,6 +43,8 @@ def to_mnist(cell_gray: np.ndarray) -> np.ndarray | None:
     if DESKEW:
         pad = _deskew(pad)
     ys, xs = np.where(pad > 0)
+    if len(ys) == 0:  # デスキューで線が消えた場合
+        return None
     glyph = pad[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
     h, w = glyph.shape
     s = 20.0 / max(h, w)

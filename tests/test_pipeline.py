@@ -45,3 +45,14 @@ def test_cnn_digit_accuracy(sample_cards):
         for c, _ in sample_cards
     )
     assert total >= 17  # 24 桁中 17 桁以上（現状は 21 桁）
+
+
+def test_id_cells_survive_degenerate_cards():
+    # 枠が途中で切れた・カードでない領域でも例外にならず 8 マス返す
+    import numpy as np
+
+    blank = np.full((cards.CARD_H, cards.CARD_W, 3), 200, np.uint8)
+    assert len(cards.id_cells(blank)) == cards.N_CELLS
+    noise = np.random.default_rng(0).integers(0, 255, (cards.CARD_H, cards.CARD_W, 3), dtype=np.uint8)
+    assert len(cards.id_cells(noise)) == cards.N_CELLS
+    assert ocr.recognize(noise, ocr.ENGINE_CNN).text.startswith("A")

@@ -182,6 +182,14 @@ def remove_grid_lines(row_bgr: np.ndarray) -> np.ndarray:
 N_CELLS = 8  # 学籍番号は「A」＋数字7桁の 8 マス
 
 
+def _plausible_edges(edges: list[int], width: int) -> bool:
+    """マス境界が 9 本そろい、幅がほぼ均等で十分な大きさかを確認する。"""
+    if len(edges) != N_CELLS + 1:
+        return False
+    widths = np.diff(edges)
+    return bool(widths.min() >= width * 0.05 and widths.max() <= widths.min() * 1.8)
+
+
 def id_cells(card: np.ndarray) -> list[np.ndarray]:
     """学籍番号行をマスごとに分割し、罫線を消した白地黒字のグレースケール画像を返す。"""
     ys = horizontal_lines(card)
@@ -211,15 +219,18 @@ def id_cells(card: np.ndarray) -> list[np.ndarray]:
     edges = [x for x in edges if w * 0.15 < x < w * 0.96]
     if len(edges) >= N_CELLS + 1:
         edges = edges[-(N_CELLS + 1) :]
-    else:  # 罫線が拾えなければ、左端〜右端を等分
-        left = edges[0] if edges else int(w * 0.27)
-        right = edges[-1] if len(edges) > 1 else w - 8
+    if not _plausible_edges(edges, w):  # 罫線が拾えない・ずれている場合は等分で代用
+        left = edges[0] if edges and edges[0] < w * 0.5 else int(w * 0.27)
+        right = edges[-1] if len(edges) > 1 and edges[-1] > w * 0.6 else w - 8
         edges = [int(left + (right - left) * i / N_CELLS) for i in range(N_CELLS + 1)]
 
     cells: list[np.ndarray] = []
     for a, b in zip(edges[:-1], edges[1:]):
         m = 7  # 罫線の太さ分だけ内側を使う
         cell_ink = ink[:, a + m : b - m].copy()
+        if cell_ink.shape[1] < 10 or cell_ink.shape[0] < 20:  # 空の画像は cv2 がエラーにする
+            cells.append(np.full((60, 120), 255, np.uint8))
+            continue
         cell_ink[:5] = 0  # 上下の横罫線の名残
         cell_ink[-5:] = 0
         cell_ink = cv2.morphologyEx(cell_ink, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))

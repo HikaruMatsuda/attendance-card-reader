@@ -69,11 +69,15 @@ def process(files: list, params: cards.DetectParams, engine: str, prefix: str) -
         boxes = cards.detect_cards(img, params)
         overlays[f.name] = draw_boxes(img, boxes)
         for ci, box in enumerate(boxes, 1):
-            card, flipped = cards.orient_card(cards.warp_card(img, box))
-            records.append(
-                Record(f"{fi}-{ci}", f"{f.name}#{ci}", card, ocr.recognize(card, engine, prefix),
-                       orientation_sure=flipped is not None)
-            )
+            try:
+                card, flipped = cards.orient_card(cards.warp_card(img, box))
+                reading = ocr.recognize(card, engine, prefix)
+            except Exception as e:  # noqa: BLE001 - 1 枚の失敗で全体を止めず、要確認として残す
+                card = cards.warp_card(img, box)
+                reading, flipped = ocr.Reading(prefix + "?" * 7, ()), None
+                st.warning(f"{f.name}#{ci} を読み取れませんでした（{type(e).__name__}）。手入力してください。")
+            records.append(Record(f"{fi}-{ci}", f"{f.name}#{ci}", card, reading,
+                                  orientation_sure=flipped is not None))
         bar.progress((fi + 1) / len(files), text=f"解析中… {fi + 1}/{len(files)} 枚")
     bar.empty()
     return records, overlays
