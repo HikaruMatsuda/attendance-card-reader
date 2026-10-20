@@ -145,8 +145,12 @@ shown = [r for r in order if r.needs_check] if only_check else order
 
 st.divider()
 for r in shown:
-    left, right = st.columns([2, 5], vertical_alignment="center")
+    # 1 人ずつ枠で区切り、画像 → 学籍番号の順に並べる
+    box = st.container(border=True)
+    left, right = box.columns([5, 2], vertical_alignment="center")
     with left:
+        st.image(cv2.cvtColor(r.card, cv2.COLOR_BGR2RGB), width=520)
+    with right:
         st.text_input(r.src, key=f"id_{r.uid}", help="読み取りが違う場合は直接書き換えてください。")
         if not idrule.is_valid(ids[r.uid]):
             st.caption("⚠️ 学籍番号のルール（A/H＋入学年度20〜26＋5桁）に合いません")
@@ -158,8 +162,6 @@ for r in shown:
             st.caption(("⚠️ 要確認: " + "・".join(low)) if low
                        else f"✅ 確信度 最低 {r.reading.min_conf:.0%}")
         st.button("↻ 180°回転して再認識", key=f"rot_{r.uid}", on_click=rotate_card, args=(r.uid, engine))
-    with right:
-        st.image(cv2.cvtColor(r.card, cv2.COLOR_BGR2RGB), width=520)
 
 # ---------------------------------------------------------------- ダウンロード
 st.divider()
