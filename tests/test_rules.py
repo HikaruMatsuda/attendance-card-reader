@@ -8,12 +8,12 @@ import ocr
 
 
 @pytest.mark.parametrize("sid,ok", [
-    ("A2500000", True), ("H2012345", True), ("H2699999", True),
-    ("A2500000", False),  # 入学年度が範囲外
-    ("A2500000", False),
-    ("A2500000", False),  # 英字が A/H 以外
-    ("A2500000", False),   # 桁不足
-    ("A2500000", False),
+    ("A2512345", True), ("H2012345", True), ("H2699999", True),
+    ("A1912345", False),  # 入学年度が範囲外
+    ("A2712345", False),
+    ("B2512345", False),  # 英字が A/H 以外
+    ("A251234", False),   # 桁不足
+    ("A25123456", False),
 ])
 def test_is_valid(sid, ok):
     assert idrule.is_valid(sid) is ok

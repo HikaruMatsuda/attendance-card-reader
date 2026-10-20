@@ -29,7 +29,7 @@ _indra = None
 
 @dataclass(frozen=True)
 class Reading:
-    text: str  # 例: "A2500000"（読めない桁は "?"）
+    text: str  # 例: "A2512345"（読めない桁は "?"）
     confs: tuple[float, ...]  # 数字 7 桁それぞれの確信度（不明なら空）
     letter_conf: float = 1.0  # 先頭英字（A/H）の確信度
 

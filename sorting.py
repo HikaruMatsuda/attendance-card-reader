@@ -19,7 +19,7 @@ ID_COLUMN_HINTS = ("学籍番号", "学生番号", "学籍", "id", "ID", "studen
 
 
 def normalize_id(value: object) -> str:
-    """全角・空白・小文字を正規化する（例: 'A2500000' → 'A2500000'）。"""
+    """全角・空白・小文字を正規化する（例: 'ａ26 00001' → 'A2600001'）。"""
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
     return re.sub(r"[\s\-_]", "", unicodedata.normalize("NFKC", str(value))).upper()

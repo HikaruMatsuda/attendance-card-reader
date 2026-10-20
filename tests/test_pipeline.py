@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import cv2
@@ -6,11 +7,14 @@ import pytest
 import cards
 import ocr
 
-SAMPLE = Path(__file__).parent / "fixtures" / "sample.jpg"
-# 左上・左下・右の順（読み順）。サンプル写真は個人情報を含むためリポジトリには含めない
-TRUTH = ["A2500000", "A2500000", "A2500000"]
+FIXTURES = Path(__file__).parent / "fixtures"
+SAMPLE = FIXTURES / "sample.jpg"
+TRUTH_FILE = FIXTURES / "truth.json"  # 写真から書き起こした正解。個人情報なので git 管理外
 
-pytestmark = pytest.mark.skipif(not SAMPLE.exists(), reason="sample.jpg がありません")
+pytestmark = pytest.mark.skipif(
+    not (SAMPLE.exists() and TRUTH_FILE.exists()), reason="sample.jpg / truth.json がありません"
+)
+TRUTH = json.loads(TRUTH_FILE.read_text())["sample.jpg"] if TRUTH_FILE.exists() else []
 
 
 @pytest.fixture(scope="module")
