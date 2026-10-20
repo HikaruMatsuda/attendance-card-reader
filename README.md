@@ -1,0 +1,39 @@
+# 出席カード読み取り (Streamlit)
+
+机に並べたカードの写真から、1 枚ずつ正しい向きで切り抜き、学籍番号を抽出して
+「学籍番号 ＋ 切り抜き画像」の一覧にするアプリ。
+
+## 起動
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/streamlit run app.py
+```
+
+## 処理の流れ
+
+1. `cards.detect_cards` : 机の色（最頻色）との色味の差でカード領域を抽出し、矩形を検出
+2. `cards.warp_card` / `orient_card` : 射影変換で横長に切り出し、表罫線の上下余白から 180° 反転を補正
+3. `cards.id_cells` : 学籍番号行をマス（A＋数字7桁）に分割し、罫線を除去
+4. `ocr.recognize` : 認識エンジンで読み取り
+   - **数字CNN**（既定）: マス単位で 1 桁ずつ分類。桁ごとの確信度を出し、低い桁を「要確認」にする
+   - **Indra OCR**: マスを連結して読ませる。手書きの 1 桁ずつは取りこぼしが多い
+5. UI で学籍番号を手修正 → CSV / 切り抜き画像 ZIP をダウンロード
+
+## 数字CNN の再学習
+
+```bash
+python tools/train_digits.py   # torch, onnx が必要。models/digits_aug.onnx を出力
+```
+
+## テスト
+
+```bash
+.venv/bin/python -m pytest -q tests   # tests/fixtures/sample.jpg（個人情報を含むため git 管理外）が必要
+```
+
+## 既知の制約
+
+- 机と同系色（白いカードを白い机に置く等）は検出しにくい。「カード検出の調整」で感度を上げる
+- カード同士が接触・重なっていると 1 枚として検出できない（少し離して撮影する）
+- 学籍番号は「先頭 1 文字＋数字 7 桁」のマス目レイアウトを前提にしている

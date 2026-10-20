@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+tools/_mnist/
+tests/fixtures/
+.DS_Store
